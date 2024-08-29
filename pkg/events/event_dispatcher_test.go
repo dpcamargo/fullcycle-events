@@ -1,6 +1,7 @@
 package events
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -29,7 +30,7 @@ type TestEventHandler struct {
 	ID int
 }
 
-func (h *TestEventHandler) Handle(event EventInterface) {
+func (h *TestEventHandler) Handle(event EventInterface, wg *sync.WaitGroup) {
 
 }
 
@@ -109,17 +110,35 @@ type MockHandler struct {
 	mock.Mock
 }
 
-func (m *MockHandler) Handle(event EventInterface) {
+func (m *MockHandler) Handle(event EventInterface, wg *sync.WaitGroup) {
 	m.Called(event)
+	wg.Done()
 }
 
-func (suite *EventDispatcherTestSuite) TestEventDispatch_Dispatch() {
+func (suite *EventDispatcherTestSuite) TestEventDispatcher_Dispatch() {
 	eh := &MockHandler{}
 	eh.On("Handle", &suite.event)
 	suite.eventDispatcher.Register(suite.event.GetName(), eh)
 	suite.eventDispatcher.Dispatch(&suite.event)
 	eh.AssertExpectations(suite.T())
 	eh.AssertNumberOfCalls(suite.T(), "Handle", 1)
+}
+
+func (suite *EventDispatcherTestSuite) TestEventDispatch_Remove() {
+	req := suite.Require()
+
+	err := suite.eventDispatcher.Register(suite.event.GetName(), &suite.handler)
+	req.NoError(err)
+
+	err = suite.eventDispatcher.Register(suite.event.GetName(), &suite.handler2)
+	req.NoError(err)
+	suite.Len(suite.eventDispatcher.handlers[suite.event.GetName()], 2)
+
+	suite.eventDispatcher.Remove(suite.event.GetName(), &suite.handler)
+	suite.Len(suite.eventDispatcher.handlers[suite.event.GetName()], 1)
+
+	suite.eventDispatcher.Remove(suite.event.GetName(), &suite.handler2)
+	suite.Empty(suite.eventDispatcher.handlers[suite.event.GetName()])
 }
 
 func TestSuite(t *testing.T) {
